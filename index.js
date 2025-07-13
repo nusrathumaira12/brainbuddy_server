@@ -1,20 +1,16 @@
 const express = require('express');
 const app = express();
 const cors = require('cors');
-const dotenv = require('dotenv')
+const dotenv = require('dotenv');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
-
-
-
-dotenv.config()
+dotenv.config();
 app.use(cors());
-app.use(express.json())
+app.use(express.json());
 
 const port = process.env.PORT || 5001;
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.qnxzilo.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.qnxzilo.mongodb.net/?retryWrites=true&w=majority`;
 
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -23,78 +19,106 @@ const client = new MongoClient(uri, {
   }
 });
 
-let sessionCollection;
-let reviewCollection;
-let bookedSessionCollection;
-
-
 async function run() {
   try {
-    // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
 
-    const db = client.db('studySessionDB')
-    sessionCollection = db.collection('sessions')
-    reviewCollection = db.collection('reviews')
-    bookedSessionCollection= db.collection('bookedSession')
+    const db = client.db('studySessionDB');
+const sessionCollection = db.collection('sessions');
+    const reviewCollection = db.collection('reviews');
+    const bookedSessionCollection = db.collection('bookedSession');
 
-    app.get('/sessions/:id' , async(req,res)=> {
-const {id} = req.params;
-const session = await sessionCollection.findOne({_id: new ObjectId(id)})
-res.send(session)
-    })
-
-    app.get('/reviews', async (req, res) => {
-        const { sessionId } = req.query;
-        const reviews = await reviewCollection.find({ sessionId }).toArray();
-        res.send(reviews);
-      });
-      
-    //   book a session
-      app.post('/bookedSession', async(req,res) => {
-        const booking = req.body;
-        const result = await bookedSessionCollection.insertOne(booking)
-        res.send(result);
-      })
-
-    //   get all booked session for a specific user
-      app.get('/bookedSession', async(req,res) => {
-        const { email } = req.query;
-        const sessions = await bookedSessionCollection.find({ studentEmail: email }).toArray()
-        res.send(sessions)
-      })
-
-      app.get('/sessions', async(req,res) => {
+    // ✅ Get all sessions (optional filter by status)
+    app.get('/sessions', async (req, res) => {
+      try {
         const { status } = req.query;
         const filter = status ? { status } : {};
         const sessions = await sessionCollection.find(filter).toArray();
         res.send(sessions);
+      } catch (error) {
+        res.status(500).send({ message: 'Error fetching sessions' });
+      }
+    });
 
+    // ✅ Get single session by ID
+    app.get('/sessions/:id', async (req, res) => {
+      const { id } = req.params;
+      try {
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).send({ message: 'Invalid session ID' });
+        }
+        const session = await sessionCollection.findOne({ _id: new ObjectId(id) });
+        if (!session) {
+          return res.status(404).send({ message: 'Session not found' });
+        }
+        res.send(session);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: 'Server error' });
+      }
+    });
 
-      })
+    // ✅ Get all reviews (optional filter by sessionId)
+    app.get('/reviews', async (req, res) => {
+      const { sessionId } = req.query;
+      try {
+        const filter = sessionId ? { sessionId } : {};
+        const reviews = await reviewCollection.find(filter).toArray();
+        res.send(reviews);
+      } catch (error) {
+        res.status(500).send({ message: 'Error fetching reviews' });
+      }
+    });
 
-      app.post('/reviews', async (req, res) => {
+    // ✅ Post a review
+    app.post('/reviews', async (req, res) => {
+      try {
         const review = req.body;
         const result = await reviewCollection.insertOne(review);
         res.send(result);
-      });
-   
+      } catch (error) {
+        res.status(500).send({ message: 'Error submitting review' });
+      }
+    });
+
+    // ✅ Book a session
+    app.post('/bookedSession', async (req, res) => {
+      try {
+        const booking = req.body;
+        const result = await bookedSessionCollection.insertOne(booking);
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: 'Error booking session' });
+      }
+    });
+
+    // ✅ Get all booked sessions for a user
+    app.get('/bookedSession', async (req, res) => {
+      const { email } = req.query;
+      try {
+        const sessions = await bookedSessionCollection.find({ studentEmail: email }).toArray();
+        res.send(sessions);
+      } catch (error) {
+        res.status(500).send({ message: 'Error fetching booked sessions' });
+      }
+    });
+
+    // ✅ Test root route
+    app.get('/', (req, res) => {
+      res.send('Study session server is running');
+    });
+
+    // ✅ Confirm DB connected
     await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
-  } finally {
-    // Ensures that the client will close when you finish/error
-    // await client.close();
+    console.log("✅ Connected to MongoDB!");
+
+  } catch (error) {
+    console.error('❌ Failed to connect to MongoDB:', error);
   }
 }
+
 run().catch(console.dir);
 
-
-
-
-app.get('/' , (req,res) => {
-    res.send('student server is running')
-})
-
-app.listen(port, ()=> {
-    console.log(`Server is listening on port ${port}`)
-})
+app.listen(port, () => {
+  console.log(`🚀 Server is running on port ${port}`);
+});
