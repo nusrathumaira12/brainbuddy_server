@@ -24,9 +24,11 @@ async function run() {
     await client.connect();
 
     const db = client.db('studySessionDB');
-const sessionCollection = db.collection('sessions');
+    const sessionCollection = db.collection('sessions');
     const reviewCollection = db.collection('reviews');
-    const bookedSessionCollection = db.collection('bookedSession');
+    const bookedSessionCollection = db.collection('bookedSessions');
+    const usersCollection = db.collection('users'); // ✅ This line was missing
+    
 
     // ✅ Get all sessions (optional filter by status)
     app.get('/sessions', async (req, res) => {
@@ -58,6 +60,38 @@ const sessionCollection = db.collection('sessions');
       }
     });
 
+   // Get a user by email
+   app.get('/users/:email', async (req, res) => {
+    const { email } = req.params;
+    console.log('📡 Looking for user:', email); // ✅ add this
+    const user = await usersCollection.findOne({ email });
+    console.log('✅ Found user:', user); // ✅ log the result
+    res.send(user);
+  });
+  
+  
+// ✅ Save new user to DB
+app.post('/users', async (req, res) => {
+  try {
+    const user = req.body;
+    console.log('📥 Saving new user:', user); // ✅
+
+    const existingUser = await usersCollection.findOne({ email: user.email });
+    if (existingUser) {
+      return res.status(400).send({ message: 'User already exists' });
+    }
+
+    const result = await usersCollection.insertOne(user);
+    res.send(result);
+  } catch (error) {
+    console.error('❌ Error saving user:', error.message);
+    res.status(500).send({ message: 'Failed to save user' });
+  }
+});
+
+
+
+
     // ✅ Get all reviews (optional filter by sessionId)
     app.get('/reviews', async (req, res) => {
       const { sessionId } = req.query;
@@ -81,10 +115,20 @@ const sessionCollection = db.collection('sessions');
       }
     });
 
+    
+
     // ✅ Book a session
-    app.post('/bookedSession', async (req, res) => {
+    app.post('/bookedSessions', async (req, res) => {
       try {
         const booking = req.body;
+
+        const existingBooking = await bookedSessionCollection.findOne({
+          studentEmail: booking.studentEmail,
+          sessionId: booking.sessionId,
+        });
+        if (existingBooking) {
+          return res.status(400).send({ message: 'Session already booked by this student' });
+        }
         const result = await bookedSessionCollection.insertOne(booking);
         res.send(result);
       } catch (error) {
@@ -93,12 +137,17 @@ const sessionCollection = db.collection('sessions');
     });
 
     // ✅ Get all booked sessions for a user
-    app.get('/bookedSession', async (req, res) => {
-      const { email } = req.query;
+    app.get('/bookedSessions', async (req, res) => {
+      const  email  = req.query.email;
+
+      if (!email) {
+        return res.status(400).send({ message: 'Missing email in query parameters' });
+      }
       try {
         const sessions = await bookedSessionCollection.find({ studentEmail: email }).toArray();
         res.send(sessions);
       } catch (error) {
+        console.error('Error fetching booked sessions:', error.message);
         res.status(500).send({ message: 'Error fetching booked sessions' });
       }
     });
