@@ -133,21 +133,43 @@ app.post('/users', async (req, res) => {
     app.post('/bookedSessions', async (req, res) => {
       try {
         const booking = req.body;
-
+    
+        // 1️⃣ Validate required fields
+        if (!booking.studentEmail || !booking.sessionId) {
+          return res.status(400).send({ message: 'Missing studentEmail or sessionId' });
+        }
+    
+        // 2️⃣ Look up user by email
+        const user = await usersCollection.findOne({ email: booking.studentEmail });
+    
+        if (!user) {
+          return res.status(404).send({ message: 'User not found' });
+        }
+    
+        // 3️⃣ Only allow if role is 'student'
+        if (user.role !== 'student') {
+          return res.status(403).send({ message: 'Only students can book sessions' });
+        }
+    
+        // 4️⃣ Prevent duplicate booking
         const existingBooking = await bookedSessionCollection.findOne({
           studentEmail: booking.studentEmail,
           sessionId: booking.sessionId,
         });
+    
         if (existingBooking) {
           return res.status(400).send({ message: 'Session already booked by this student' });
         }
+    
+        // 5️⃣ Save booking
         const result = await bookedSessionCollection.insertOne(booking);
         res.send(result);
       } catch (error) {
+        console.error('❌ Booking error:', error);
         res.status(500).send({ message: 'Error booking session' });
       }
     });
-
+    
     // ✅ Get all booked sessions for a user
     app.get('/bookedSessions', async (req, res) => {
       const  email  = req.query.email;
@@ -190,71 +212,95 @@ app.post('/users', async (req, res) => {
     });
     
 
-    app.post('/payments', async (req, res) => {
-      try {
-        const { sessionId, email, amount, paymentMethod, transactionId } = req.body;
+   
     
-        // 1️⃣ Update the corresponding booked session's payment status
-        const updateResult = await bookedSessionCollection.updateOne(
-          {
-            sessionId: sessionId,
-            studentEmail: email,
-          },
-          {
-            $set: {
-              payment_status: 'paid',
-              transactionId,
-            }
-          }
-        );
-    
-        if (updateResult.modifiedCount === 0) {
-          return res.status(404).send({ message: 'Booking not found or already updated' });
-        }
-    
-        // 2️⃣ Save payment record in a separate collection
-        const paymentDoc = {
-          sessionId,
-          email,
-          amount,
-          paymentMethod,
-          transactionId,
-          paid_at_string: new Date().toISOString(),
-          paid_at: new Date()
-        };
-    
-        const paymentResult = await paymentsCollection.insertOne(paymentDoc);
-    
-        res.send({
-          message: 'Payment recorded and booking updated successfully',
-          paymentId: paymentResult.insertedId
-        });
-      } catch (error) {
-        console.error('❌ Error in /payments:', error);
-        res.status(500).send({ message: 'Failed to record payment' });
-      }
-    });
     
  
-// app.get('/bookedSessions/:id', async (req, res) => {
+app.get('/bookedSessions/:id', async (req, res) => {
 
-//   try {
-//     const id = req.params.id;
+  try {
+    const id = req.params.id;
 
    
 
-//     const booking = await bookedSessionCollection.findOne({ _id: new ObjectId(id) });
+    const booking = await bookedSessionCollection.findOne({ _id: new ObjectId(id) });
 
-//     if (!booking) {
-//       return res.status(404).send({ message: 'Booking not found' });
-//     }
+    if (!booking) {
+      return res.status(404).send({ message: 'Booking not found' });
+    }
 
-//     res.send(booking);
-//   } catch (err) {
-//     console.error('Error fetching booking:', err);
-//     res.status(500).send({ message: 'Server error' });
-//   }
-// });
+    res.send(booking);
+  } catch (err) {
+    console.error('Error fetching booking:', err);
+    res.status(500).send({ message: 'Server error' });
+  }
+});
+
+// backend: POST /payments
+app.post('/payments', async (req, res) => {
+  try {
+    const { sessionId, email, amount, paymentMethod, transactionId } = req.body;
+
+    // Check if booking already exists
+    const existingBooking = await bookedSessionCollection.findOne({
+      sessionId,
+      studentEmail: email,
+    });
+
+    if (!existingBooking) {
+      // create the booking first
+      const session = await sessionCollection.findOne({ _id: new ObjectId(sessionId) });
+
+      if (!session) {
+        return res.status(404).send({ message: 'Session not found' });
+      }
+
+      await bookedSessionCollection.insertOne({
+        sessionId,
+        sessionTitle: session.title,
+        tutorEmail: session.tutorEmail,
+        studentEmail: email,
+        bookingDate: new Date().toISOString(),
+        feePaid: amount,
+        payment_status: 'paid',
+        transactionId,
+      });
+    } else {
+      // otherwise, update existing booking
+      await bookedSessionCollection.updateOne(
+        { sessionId, studentEmail: email },
+        {
+          $set: {
+            payment_status: 'paid',
+            transactionId,
+          }
+        }
+      );
+    }
+
+    // Save payment info
+    const paymentDoc = {
+      sessionId,
+      email,
+      amount,
+      paymentMethod,
+      transactionId,
+      paid_at: new Date(),
+      paid_at_string: new Date().toISOString(),
+    };
+
+    const paymentResult = await paymentsCollection.insertOne(paymentDoc);
+
+    res.send({
+      message: 'Payment recorded and booking saved/updated successfully',
+      paymentId: paymentResult.insertedId
+    });
+  } catch (error) {
+    console.error('❌ Error in /payments:', error);
+    res.status(500).send({ message: 'Failed to record payment' });
+  }
+});
+
 
 
     // ✅ Test root route
