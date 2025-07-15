@@ -44,21 +44,22 @@ async function run() {
 
     // ✅ Get single session by ID
     app.get('/sessions/:id', async (req, res) => {
-      const { id } = req.params;
       try {
-        if (!ObjectId.isValid(id)) {
-          return res.status(400).send({ message: 'Invalid session ID' });
-        }
+        const id = req.params.id;
+    
         const session = await sessionCollection.findOne({ _id: new ObjectId(id) });
+    
         if (!session) {
           return res.status(404).send({ message: 'Session not found' });
         }
+    
         res.send(session);
-      } catch (error) {
-        console.error(error);
+      } catch (err) {
+        console.error('Error fetching session:', err);
         res.status(500).send({ message: 'Server error' });
       }
     });
+    
 
    // Get a user by email
    app.get('/users/:email', async (req, res) => {
@@ -151,6 +152,27 @@ app.post('/users', async (req, res) => {
         res.status(500).send({ message: 'Error fetching booked sessions' });
       }
     });
+
+ 
+// app.get('/bookedSessions/:id', async (req, res) => {
+//   try {
+//     const id = req.params.id;
+
+   
+
+//     const booking = await bookedSessionCollection.findOne({ _id: new ObjectId(id) });
+
+//     if (!booking) {
+//       return res.status(404).send({ message: 'Booking not found' });
+//     }
+
+//     res.send(booking);
+//   } catch (err) {
+//     console.error('Error fetching booking:', err);
+//     res.status(500).send({ message: 'Server error' });
+//   }
+// });
+
 
     // ✅ Test root route
     app.get('/', (req, res) => {
