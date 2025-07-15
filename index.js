@@ -5,6 +5,7 @@ const dotenv = require('dotenv');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 dotenv.config();
+const stripe = require('stripe')(process.env.PAYMENT_GATEWAY_KEY);
 app.use(cors());
 app.use(express.json());
 
@@ -27,6 +28,7 @@ async function run() {
     const sessionCollection = db.collection('sessions');
     const reviewCollection = db.collection('reviews');
     const bookedSessionCollection = db.collection('bookedSessions');
+    const paymentsCollection = db.collection('payments')
     const usersCollection = db.collection('users'); // ✅ This line was missing
     
 
@@ -60,6 +62,15 @@ async function run() {
       }
     });
     
+    app.post('/create-payment-intent', async (req, res) => {
+      const { amount } = req.body;
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount * 100, 
+        currency: 'bdt',
+        payment_method_types: ['card']
+      });
+      res.send({ clientSecret: paymentIntent.client_secret });
+    });
 
    // Get a user by email
    app.get('/users/:email', async (req, res) => {
@@ -153,8 +164,54 @@ app.post('/users', async (req, res) => {
       }
     });
 
+    app.post('/payments', async (req, res) => {
+      try {
+        const { sessionId, email, amount, paymentMethod, transactionId } = req.body;
+    
+        // 1️⃣ Update the corresponding booked session's payment status
+        const updateResult = await bookedSessionCollection.updateOne(
+          {
+            sessionId: sessionId,
+            studentEmail: email,
+          },
+          {
+            $set: {
+              payment_status: 'paid',
+              transactionId,
+            }
+          }
+        );
+    
+        if (updateResult.modifiedCount === 0) {
+          return res.status(404).send({ message: 'Booking not found or already updated' });
+        }
+    
+        // 2️⃣ Save payment record in a separate collection
+        const paymentDoc = {
+          sessionId,
+          email,
+          amount,
+          paymentMethod,
+          transactionId,
+          paid_at_string: new Date().toISOString(),
+          paid_at: new Date()
+        };
+    
+        const paymentResult = await paymentsCollection.insertOne(paymentDoc);
+    
+        res.send({
+          message: 'Payment recorded and booking updated successfully',
+          paymentId: paymentResult.insertedId
+        });
+      } catch (error) {
+        console.error('❌ Error in /payments:', error);
+        res.status(500).send({ message: 'Failed to record payment' });
+      }
+    });
+    
  
 // app.get('/bookedSessions/:id', async (req, res) => {
+
 //   try {
 //     const id = req.params.id;
 
@@ -175,6 +232,8 @@ app.post('/users', async (req, res) => {
 
 
     // ✅ Test root route
+    
+    
     app.get('/', (req, res) => {
       res.send('Study session server is running');
     });
