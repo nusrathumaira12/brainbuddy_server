@@ -31,6 +31,7 @@ async function run() {
     const paymentsCollection = db.collection('payments')
     const usersCollection = db.collection('users'); 
     const notesCollection = db.collection("notes");
+    const materialsCollection = db.collection('studyMaterials')
 
     
 
@@ -359,9 +360,79 @@ app.delete('/notes/:id', async (req, res) => {
   }
 });
 
+app.get('/materials/:sessionId', async (req, res) => {
+  const sessionId = req.params.sessionId;
+  try {
+    const studyMaterials = await materialsCollection.find({ sessionId }).toArray();
+    res.send(studyMaterials);
+  } catch (error) {
+    res.status(500).send({ message: 'Failed to fetch studyMaterials' });
+  }
+});
+
+
+// ✅ Get all users with role = 'tutor'
+app.get('/users', async (req, res) => {
+  try {
+    const role = req.query.role;
+
+    let query = {};
+    if (role) {
+      query = { role };
+    }
+
+    const users = await usersCollection.find(query).toArray();
+    res.send(users);
+  } catch (error) {
+    console.error('❌ Error fetching users:', error.message);
+    res.status(500).send({ message: 'Failed to fetch users' });
+  }
+});
+
+app.get('/tutors-from-sessions', async (req, res) => {
+  try {
+    const tutors = await sessionCollection.aggregate([
+      {
+        $group: {
+          _id: '$tutorName',
+          tutorName: { $first: '$tutorName' }
+        }
+      }
+    ]).toArray();
+
+    // Optionally add current logged-in tutor if passed as query param
+    const { currentTutorName } = req.query;
+    const exists = tutors.some(t => t.tutorName === currentTutorName);
+    if (currentTutorName && !exists) {
+      tutors.push({ tutorName: currentTutorName });
+    }
+
+    res.send(tutors);
+  } catch (err) {
+    console.error('❌ Failed to fetch tutors:', err.message);
+    res.status(500).send({ message: 'Internal server error' });
+  }
+});
 
 
 
+
+// POST /study-sessions
+app.post('/study-sessions', async (req, res) => {
+  try {
+    const session = req.body;
+
+    
+    session.status = 'pending';
+    session.registrationFee = 0; 
+
+    const result = await sessionCollection.insertOne(session);
+    res.send(result);
+  } catch (error) {
+    console.error('Error creating session:', error.message);
+    res.status(500).send({ message: 'Failed to create session' });
+  }
+});
 
 
 
