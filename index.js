@@ -29,7 +29,9 @@ async function run() {
     const reviewCollection = db.collection('reviews');
     const bookedSessionCollection = db.collection('bookedSessions');
     const paymentsCollection = db.collection('payments')
-    const usersCollection = db.collection('users'); // ✅ This line was missing
+    const usersCollection = db.collection('users'); 
+    const notesCollection = db.collection("notes");
+
     
 
     // ✅ Get all sessions (optional filter by status)
@@ -300,6 +302,66 @@ app.post('/payments', async (req, res) => {
     res.status(500).send({ message: 'Failed to record payment' });
   }
 });
+
+// Create Note Route
+app.post('/notes', async (req, res) => {
+  try {
+    const note = req.body;
+    if (!note.email || !note.title || !note.description) {
+      return res.status(400).send({ message: 'All fields are required' });
+    }
+
+    const result = await notesCollection.insertOne(note);
+    res.status(201).send(result);
+  } catch (err) {
+    console.error('Error creating note:', err);
+    res.status(500).send({ message: 'Server error' });
+  }
+});
+
+app.get('/notes', async (req, res) => {
+  try {
+    const email = req.query.email;
+    if (!email) {
+      return res.status(400).send({ message: 'Email is required' });
+    }
+
+    const notes = await notesCollection.find({ email }).toArray();
+    res.send(notes);
+  } catch (err) {
+    res.status(500).send({ message: 'Server error' });
+  }
+});
+
+app.patch('/notes/:id', async (req, res) => {
+  const id = req.params.id;
+  const { title, description } = req.body;
+
+  try {
+    const result = await notesCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { title, description } }
+    );
+    res.send(result);
+  } catch (err) {
+    res.status(500).send({ message: 'Update failed' });
+  }
+});
+
+app.delete('/notes/:id', async (req, res) => {
+  const id = req.params.id;
+
+  try {
+    const result = await notesCollection.deleteOne({ _id: new ObjectId(id) });
+    res.send(result);
+  } catch (err) {
+    res.status(500).send({ message: 'Delete failed' });
+  }
+});
+
+
+
+
 
 
 
