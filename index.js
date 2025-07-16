@@ -461,6 +461,43 @@ app.get('/study-sessions/tutor/:email', async (req, res) => {
   res.send(sessions);
 });
 
+app.get('/tutor/approved-sessions/:email', async (req, res) => {
+  const tutorEmail = req.params.email;
+  const sessions = await sessionCollection.find({
+    tutorEmail,
+    status: 'approved'
+  }).toArray();
+  res.send(sessions);
+});
+
+app.post('/materials', async (req, res) => {
+  const material = req.body; 
+  material.createdAt = new Date();
+
+  const result = await materialsCollection.insertOne(material);
+  res.send(result);
+});
+app.get('/materials/:tutorEmail', async (req, res) => {
+  const tutorEmail = req.params.tutorEmail;
+  const materials = await materialsCollection.find({ tutorEmail }).toArray();
+  res.send(materials);
+});
+app.delete('/materials/:id', async (req, res) => {
+  const id = req.params.id;
+  const result = await materialsCollection.deleteOne({ _id: new ObjectId(id) });
+  res.send(result);
+});
+app.put('/materials/:id', async (req, res) => {
+  const id = req.params.id;
+  const updated = req.body;
+  const result = await materialsCollection.updateOne(
+    { _id: new ObjectId(id) },
+    { $set: updated }
+  );
+  res.send(result);
+});
+
+
     // ✅ Test root route
     
     
