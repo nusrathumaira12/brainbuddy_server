@@ -434,6 +434,25 @@ app.post('/study-sessions', async (req, res) => {
   }
 });
 
+// PATCH: Update study session status back to 'pending'
+app.patch('/study-sessions/request-again/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await sessionCollection.updateOne(
+      { _id: new ObjectId(id), status: 'rejected' },
+      { $set: { status: 'pending' } }
+    );
+
+    if (result.modifiedCount === 0) {
+      return res.status(400).send({ message: 'Already pending or approved' });
+    }
+
+    res.send({ message: 'Request sent successfully' });
+  } catch (err) {
+    res.status(500).send({ message: 'Failed to send request again' });
+  }
+});
 
 
     // ✅ Test root route
