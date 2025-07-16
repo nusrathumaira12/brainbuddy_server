@@ -496,6 +496,115 @@ app.put('/materials/:id', async (req, res) => {
   );
   res.send(result);
 });
+// ✅ Get all users with optional search by name/email
+app.get('/users', async (req, res) => {
+  const search = req.query.search || '';
+  const query = {
+    $or: [
+      { name: { $regex: search, $options: 'i' } },
+      { email: { $regex: search, $options: 'i' } }
+    ]
+  };
+
+  const users = await usersCollection.find(query).toArray();
+  res.send(users);
+});
+// ✅ Update user role
+app.patch('/users/role/:id', async (req, res) => {
+  const { id } = req.params;
+  const { role } = req.body;
+
+  const result = await usersCollection.updateOne(
+    { _id: new ObjectId(id) },
+    { $set: { role } }
+  );
+  res.send(result);
+});
+
+app.patch('/study-sessions/approve/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { registrationFee } = req.body;
+
+    const result = await sessionCollection.updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $set: {
+          status: 'approved',
+          registrationFee: parseInt(registrationFee) || 0
+        }
+      }
+    );
+
+    res.send(result);
+  } catch (error) {
+    console.error('❌ Error approving session:', error);
+    res.status(500).send({ message: 'Approval failed' });
+  }
+});
+
+app.patch('/study-sessions/reject/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const result = await sessionCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { status: 'rejected' } }
+    );
+    res.send(result);
+  } catch (error) {
+    console.error('❌ Error rejecting session:', error);
+    res.status(500).send({ message: 'Rejection failed' });
+  }
+});
+
+app.put('/study-sessions/:id', async (req, res) => {
+  const id = req.params.id;
+  const updatedSession = req.body;
+
+  try {
+    const existing = await sessionCollection.findOne({ _id: new ObjectId(id) });
+    if (!existing || existing.status !== 'approved') {
+      return res.status(400).send({ message: 'Only approved sessions can be updated' });
+    }
+
+    const result = await sessionCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: updatedSession }
+    );
+
+    res.send(result);
+  } catch (error) {
+    console.error('❌ Update failed:', error);
+    res.status(500).send({ message: 'Failed to update session' });
+  }
+});
+
+app.delete('/study-sessions/:id', async (req, res) => {
+  const id = req.params.id;
+
+  try {
+    const session = await sessionCollection.findOne({ _id: new ObjectId(id) });
+    if (!session || session.status !== 'approved') {
+      return res.status(400).send({ message: 'Only approved sessions can be deleted' });
+    }
+
+    const result = await sessionCollection.deleteOne({ _id: new ObjectId(id) });
+    res.send(result);
+  } catch (error) {
+    console.error('❌ Delete failed:', error);
+    res.status(500).send({ message: 'Failed to delete session' });
+  }
+});
+
+// ✅ Get all study materials (admin)
+app.get('/materials', async (req, res) => {
+  try {
+    const materials = await materialsCollection.find().toArray();
+    res.send(materials);
+  } catch (error) {
+    res.status(500).send({ message: 'Failed to fetch all study materials' });
+  }
+});
 
 
     // ✅ Test root route
