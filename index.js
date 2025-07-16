@@ -454,6 +454,12 @@ app.patch('/study-sessions/request-again/:id', async (req, res) => {
   }
 });
 
+// Get all study sessions created by a tutor
+app.get('/study-sessions/tutor/:email', async (req, res) => {
+  const email = req.params.email;
+  const sessions = await sessionCollection.find({ tutorEmail: email }).toArray();
+  res.send(sessions);
+});
 
     // ✅ Test root route
     
