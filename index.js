@@ -35,7 +35,6 @@ async function run() {
 
     
 
-    // ✅ Get all sessions (optional filter by status)
     app.get('/sessions', async (req, res) => {
       try {
         const { status } = req.query;
@@ -46,6 +45,8 @@ async function run() {
         res.status(500).send({ message: 'Error fetching sessions' });
       }
     });
+
+    
 
     // ✅ Get single session by ID
     app.get('/sessions/:id', async (req, res) => {
@@ -66,14 +67,26 @@ async function run() {
     });
     
     app.post('/create-payment-intent', async (req, res) => {
-      const { amount } = req.body;
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: amount * 100, 
-        currency: 'bdt',
-        payment_method_types: ['card']
-      });
-      res.send({ clientSecret: paymentIntent.client_secret });
-    });
+     
+      try {
+        const { amount } = req.body;
+        console.log('📥 Received amount:', amount);
+
+        if (!amount || typeof amount !== 'number' ) {
+          return res.status(400).json({ error: 'Invalid amount' });
+        }
+    
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: Math.round(amount * 100),
+          currency: 'BDT', // Must be uppercase
+          payment_method_types: ['card'],
+        });
+        res.send({ clientSecret: paymentIntent.client_secret });
+  } catch (error) {
+    console.error('❌ Stripe create error:', error); // log actual backend error
+    res.status(500).json({ error: error.message });
+  }
+});
 
    // Get a user by email
    app.get('/users/:email', async (req, res) => {
@@ -470,6 +483,30 @@ app.get('/tutor/approved-sessions/:email', async (req, res) => {
   res.send(sessions);
 });
 
+app.patch('/study-sessions/reject/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { rejectionReason, feedback } = req.body;
+
+    const result = await sessionCollection.updateOne(
+      { _id: new ObjectId(id) },
+      {
+        $set: {
+          status: 'rejected',
+          rejectionReason: rejectionReason || 'No reason provided',
+          feedback: feedback || ''
+        }
+      }
+    );
+
+    res.send(result);
+  } catch (error) {
+    console.error('❌ Error rejecting session:', error);
+    res.status(500).send({ message: 'Rejection failed' });
+  }
+});
+
+
 app.post('/materials', async (req, res) => {
   const material = req.body; 
   material.createdAt = new Date();
@@ -546,9 +583,13 @@ app.patch('/study-sessions/approve/:id', async (req, res) => {
 app.patch('/study-sessions/reject/:id', async (req, res) => {
   try {
     const id = req.params.id;
+    const { rejectionReason, feedback } = req.body;
     const result = await sessionCollection.updateOne(
       { _id: new ObjectId(id) },
-      { $set: { status: 'rejected' } }
+      { $set: { status: 'rejected',
+        rejectionReason,
+          feedback
+       } }
     );
     res.send(result);
   } catch (error) {
