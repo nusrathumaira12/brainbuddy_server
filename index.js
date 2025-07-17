@@ -22,7 +22,7 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-    await client.connect();
+    // await client.connect();
 
     const db = client.db('studySessionDB');
     const sessionCollection = db.collection('sessions');
@@ -106,9 +106,15 @@ app.post('/users', async (req, res) => {
 
     const existingUser = await usersCollection.findOne({ email: user.email });
     if (existingUser) {
-      return res.status(400).send({ message: 'User already exists' });
+      // Optional: Update login time
+      await usersCollection.updateOne(
+        { email: user.email },
+        { $set: { last_log_in: new Date().toISOString() } }
+      );
+      return res.status(200).send({ message: 'User already exists, login time updated' });
     }
-
+    user.created_at = new Date().toISOString();
+    user.last_log_in = new Date().toISOString();
     const result = await usersCollection.insertOne(user);
     res.send(result);
   } catch (error) {
@@ -190,6 +196,7 @@ app.post('/users', async (req, res) => {
     app.get('/bookedSessions', async (req, res) => {
       const  email  = req.query.email;
 
+     
       if (!email) {
         return res.status(400).send({ message: 'Missing email in query parameters' });
       }
@@ -204,6 +211,8 @@ app.post('/users', async (req, res) => {
 
 
     app.get('/payments', async (req, res) => {
+
+    
       try {
        
         const userEmail = req.query.email;
@@ -254,7 +263,9 @@ app.get('/bookedSessions/:id', async (req, res) => {
 
 // backend: POST /payments
 app.post('/payments', async (req, res) => {
+  
   try {
+
     const { sessionId, email, amount, paymentMethod, transactionId } = req.body;
 
     // Check if booking already exists
