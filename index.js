@@ -3,13 +3,24 @@ const app = express();
 const cors = require('cors');
 const dotenv = require('dotenv');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
-
+const admin = require("firebase-admin");
 dotenv.config();
 const stripe = require('stripe')(process.env.PAYMENT_GATEWAY_KEY);
 app.use(cors());
 app.use(express.json());
 
+
 const port = process.env.PORT || 5001;
+
+const decodedKey = Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT, 'base64').toString('utf8')
+
+
+const serviceAccount = JSON.parse(decodedKey)
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.qnxzilo.mongodb.net/?retryWrites=true&w=majority`;
 
 const client = new MongoClient(uri, {
@@ -33,7 +44,34 @@ async function run() {
     const notesCollection = db.collection("notes");
     const materialsCollection = db.collection('studyMaterials')
 
-    
+    // custom
+    const verifyFBToken = async (req, res, next) => {
+     const authHeader = req.headers.authorization
+
+     console.log('🧾 Authorization Header:', authHeader);
+
+     if(!authHeader || !authHeader.startsWith('Bearer ')){
+return res.status(401).send({message: 'unauthorized access'})
+     }
+const token = authHeader.split(' ')[1]
+// if(!token){
+//   return res.status(401).send({message: 'unauthorized access'})
+// }
+// verify the token
+
+try{
+  const decoded = await admin.auth().verifyIdToken(token)
+  req.decoded = decoded;
+  console.log('✅ Decoded:', decoded);
+  next()
+}
+catch (error) {
+  console.error('❌ Token verification failed:', error.message);
+  res.status(401).send({ message: 'Unauthorized: Token verification failed' });
+}
+
+     
+    }
 
     app.get('/sessions', async (req, res) => {
       try {
@@ -193,7 +231,7 @@ app.post('/users', async (req, res) => {
     });
     
     // ✅ Get all booked sessions for a user
-    app.get('/bookedSessions', async (req, res) => {
+    app.get('/bookedSessions', verifyFBToken, async (req, res) => {
       const  email  = req.query.email;
 
      
@@ -210,13 +248,16 @@ app.post('/users', async (req, res) => {
     });
 
 
-    app.get('/payments', async (req, res) => {
+    app.get('/payments', verifyFBToken, async (req, res) => {
 
     
       try {
        
         const userEmail = req.query.email;
-    
+    console.log('decoded', req.decoded)
+    if(req.decoded.email !== userEmail){
+      return res.status(403).send({message: 'forbidden access'})
+    }
      
         const query = {};
         if (userEmail) {
@@ -262,7 +303,7 @@ app.get('/bookedSessions/:id', async (req, res) => {
 });
 
 // backend: POST /payments
-app.post('/payments', async (req, res) => {
+app.post('/payments',verifyFBToken, async (req, res) => {
   
   try {
 
@@ -518,7 +559,7 @@ app.patch('/study-sessions/reject/:id', async (req, res) => {
 });
 
 
-app.post('/materials', async (req, res) => {
+app.post('/materials',verifyFBToken, async (req, res) => {
   const material = req.body; 
   material.createdAt = new Date();
 
@@ -544,7 +585,7 @@ app.put('/materials/:id', async (req, res) => {
   );
   res.send(result);
 });
-// ✅ Get all users with optional search by name/email
+
 app.get('/users', async (req, res) => {
   const search = req.query.search || '';
   const query = {
@@ -557,11 +598,39 @@ app.get('/users', async (req, res) => {
   const users = await usersCollection.find(query).toArray();
   res.send(users);
 });
+
+
+app.get("/users/search", async (req, res) => {
+  const emailQuery = req.query.email;
+  if (!emailQuery) {
+    return res.status(400).send({ message: "Unfortunetly Missing email query" });
+  }
+
+  const regex = new RegExp(emailQuery, "i");
+
+  try {
+    const users = await usersCollection
+      .find({ email: { $regex: regex } })
+      .project({ name: 1, email: 1, createdAt: 1, role: 1 }) 
+      .limit(10)
+      .toArray();
+
+    res.send(users);
+  } catch (error) {
+    console.error("Error searching users", error);
+    res.status(500).send({ message: "Error searching users", error });
+  }
+});
+
+
 // ✅ Update user role
-app.patch('/users/role/:id', async (req, res) => {
+app.patch('/users/:id/role', async (req, res) => {
   const { id } = req.params;
   const { role } = req.body;
 
+  if(!["admin", "student"].includes(role)){
+    return res.status(400).send({ message : "Invalid role"})
+  }
   const result = await usersCollection.updateOne(
     { _id: new ObjectId(id) },
     { $set: { role } }
@@ -667,8 +736,8 @@ app.get('/materials', async (req, res) => {
     });
 
     // ✅ Confirm DB connected
-    await client.db("admin").command({ ping: 1 });
-    console.log("✅ Connected to MongoDB!");
+    // await client.db("admin").command({ ping: 1 });
+    // console.log("✅ Connected to MongoDB!");
 
   } catch (error) {
     console.error('❌ Failed to connect to MongoDB:', error);
